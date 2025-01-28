@@ -45,14 +45,14 @@ async def fetch_economic_calendar():
             "Referer": "https://www.tradingview.com/economic-calendar/"
         }
         
-        # Get today's date
+        # Get dates for this week
         today = datetime.now()
-        tomorrow = today + timedelta(days=1)
-        day_after = tomorrow + timedelta(days=1)
+        start_of_week = today - timedelta(days=today.weekday())
+        end_of_week = start_of_week + timedelta(days=6)
         
         params = {
-            "from": tomorrow.strftime("%Y-%m-%d"),
-            "to": day_after.strftime("%Y-%m-%d"),
+            "from": start_of_week.strftime("%Y-%m-%d"),
+            "to": end_of_week.strftime("%Y-%m-%d"),
             "countries": "all",
             "importance": "all"
         }
