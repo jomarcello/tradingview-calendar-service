@@ -14,7 +14,7 @@ load_dotenv()
 TELEGRAM_SERVICE_URL = os.getenv("TELEGRAM_SERVICE_URL")
 AI_PROCESSOR_URL = os.getenv("AI_PROCESSOR_URL", "https://tradingview-signal-ai-service-production.up.railway.app")
 CHART_SERVICE_URL = os.getenv("CHART_SERVICE_URL", "https://tradingview-chart-service-production.up.railway.app")
-SIGNAL_PROCESSOR_URL = os.getenv("SIGNAL_PROCESSOR_URL", "https://tradingview-signal-processor-production.up.railway.app")
+SIGNAL_ENTRY_URL = os.getenv("SIGNAL_ENTRY_URL", "https://tradingview-signal-processor-production.up.railway.app")
 
 # Initialize logging
 logging.basicConfig(
@@ -92,7 +92,7 @@ async def fetch_economic_calendar():
         raise HTTPException(status_code=500, detail=f"Error fetching calendar data: {str(e)}")
 
 def format_signal_data(events: List[EconomicEvent]) -> dict:
-    """Format events into a signal that matches the signal processor format."""
+    """Format events into a signal that matches the signal entry format."""
     if not events:
         return None
         
@@ -100,10 +100,14 @@ def format_signal_data(events: List[EconomicEvent]) -> dict:
     high_impact_events = [e for e in events if e.impact == "high"]
     main_event = high_impact_events[0] if high_impact_events else events[0]
     
-    # Create signal in the format expected by signal processor
+    # Create signal in the format expected by signal entry
     signal = {
-        "type": "economic_calendar",
+        "source": "economic_calendar",
         "instrument": main_event.currency + "USD",  # Convert to forex pair
+        "action": "ALERT",  # No specific action, just an alert
+        "entry": None,  # No entry price for calendar events
+        "stop_loss": None,  # No stop loss for calendar events
+        "take_profit": None,  # No take profit for calendar events
         "timeframe": "1h",
         "strategy": "Economic Calendar Alert",
         "events": [
@@ -131,22 +135,22 @@ def format_signal_data(events: List[EconomicEvent]) -> dict:
 
 @app.get("/calendar")
 async def get_calendar():
-    """Get economic calendar data and send through signal processor."""
+    """Get economic calendar data and send through signal entry."""
     try:
         events = await fetch_economic_calendar()
         signal = format_signal_data(events)
         
         if signal:
-            # Send to signal processor
+            # Send to signal entry service
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{SIGNAL_PROCESSOR_URL}/process_signal",
+                    f"{SIGNAL_ENTRY_URL}/process_signal",
                     json=signal
                 )
                 response.raise_for_status()
                 
-                logger.info(f"Signal sent to processor: {signal}")
-                return {"status": "success", "message": "Calendar signal sent to processor"}
+                logger.info(f"Signal sent to entry processor: {signal}")
+                return {"status": "success", "message": "Calendar signal sent to entry processor"}
         else:
             return {"status": "success", "message": "No events to process"}
         
