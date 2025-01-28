@@ -48,10 +48,11 @@ async def fetch_economic_calendar():
         # Get today's date
         today = datetime.now()
         tomorrow = today + timedelta(days=1)
+        day_after = tomorrow + timedelta(days=1)
         
         params = {
-            "from": today.strftime("%Y-%m-%d"),
-            "to": tomorrow.strftime("%Y-%m-%d"),
+            "from": tomorrow.strftime("%Y-%m-%d"),
+            "to": day_after.strftime("%Y-%m-%d"),
             "countries": "all",
             "importance": "all"
         }
