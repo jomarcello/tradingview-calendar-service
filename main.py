@@ -126,15 +126,51 @@ async def get_calendar():
         events = await fetch_economic_calendar()
         message = format_telegram_message(events)
         
+        # Create signal format
+        signal = {
+            "message": message,
+            "parse_mode": "HTML",
+            "reply_markup": {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "🔄 Refresh Calendar",
+                            "callback_data": "refresh_calendar"
+                        }
+                    ],
+                    [
+                        {
+                            "text": "📊 Trading Signals",
+                            "callback_data": "trading_signals"
+                        },
+                        {
+                            "text": "📈 Charts",
+                            "callback_data": "charts"
+                        }
+                    ],
+                    [
+                        {
+                            "text": "⚙️ Settings",
+                            "callback_data": "settings"
+                        },
+                        {
+                            "text": "ℹ️ Help",
+                            "callback_data": "help"
+                        }
+                    ]
+                ]
+            }
+        }
+        
         # Send to telegram service
         if TELEGRAM_SERVICE_URL:
             async with httpx.AsyncClient() as client:
                 await client.post(
                     f"{TELEGRAM_SERVICE_URL}/send_calendar",
-                    json={"message": message}
+                    json=signal
                 )
         
-        return {"status": "success", "data": message}
+        return {"status": "success", "data": signal}
         
     except Exception as e:
         logger.error(f"Error in get_calendar: {str(e)}")
