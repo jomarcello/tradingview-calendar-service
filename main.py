@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
 import json
+import traceback
 from dotenv import load_dotenv
 
 # Load environment variables
