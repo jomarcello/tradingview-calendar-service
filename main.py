@@ -33,77 +33,55 @@ class EconomicEvent(BaseModel):
     previous: Optional[str] = None
 
 async def fetch_economic_calendar():
-    """Fetch economic calendar data from TradingView."""
-    url = "https://economic-calendar.tradingview.com/events"
-    
+    """Fetch economic calendar data (currently using mock data)."""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://www.tradingview.com",
-            "Referer": "https://www.tradingview.com/economic-calendar/"
-        }
+        # Mock data for today
+        mock_events = [
+            {
+                "time": "10:00",
+                "currency": "EUR",
+                "impact": "high",
+                "event": "German GDP Q4",
+                "actual": "",
+                "forecast": "0.2%",
+                "previous": "0.1%"
+            },
+            {
+                "time": "14:30",
+                "currency": "USD",
+                "impact": "medium",
+                "event": "Core Durable Goods Orders",
+                "actual": "",
+                "forecast": "0.5%",
+                "previous": "0.3%"
+            },
+            {
+                "time": "16:00",
+                "currency": "USD",
+                "impact": "high",
+                "event": "CB Consumer Confidence",
+                "actual": "",
+                "forecast": "115.2",
+                "previous": "110.7"
+            }
+        ]
         
-        # Get dates for this week
-        today = datetime.now()
-        start_of_week = today - timedelta(days=today.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
+        events = []
+        for event_data in mock_events:
+            event = EconomicEvent(
+                time=event_data["time"],
+                currency=event_data["currency"],
+                impact=event_data["impact"],
+                event=event_data["event"],
+                actual=event_data["actual"],
+                forecast=event_data["forecast"],
+                previous=event_data["previous"]
+            )
+            events.append(event)
         
-        params = {
-            "from": start_of_week.strftime("%Y-%m-%d"),
-            "to": end_of_week.strftime("%Y-%m-%d"),
-            "countries": "all",
-            "importance": "all"
-        }
-        
-        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            
-            # Log the response for debugging
-            logger.info(f"TradingView response: {response.text}")
-            
-            try:
-                data = response.json()
-            except json.JSONDecodeError:
-                logger.error(f"Failed to decode JSON response: {response.text}")
-                raise HTTPException(status_code=500, detail="Invalid response from TradingView")
-            
-            events = []
-            if isinstance(data, list):
-                for event_data in data:
-                    try:
-                        # Convert impact level
-                        impact_level = 'low'
-                        if isinstance(event_data, dict):
-                            importance = event_data.get('importance', 'low')
-                            if importance in ['high', 'medium', 'low']:
-                                impact_level = importance
-                        
-                        # Convert timestamp to time
-                        event_time = datetime.fromtimestamp(event_data.get('date', 0) if isinstance(event_data, dict) else 0)
-                        time_str = event_time.strftime("%H:%M")
-                        
-                        # Create event object with safe defaults
-                        event = EconomicEvent(
-                            time=time_str,
-                            currency=event_data.get('country', '') if isinstance(event_data, dict) else '',
-                            impact=impact_level,
-                            event=event_data.get('title', '') if isinstance(event_data, dict) else str(event_data),
-                            actual=event_data.get('actual', '') if isinstance(event_data, dict) else '',
-                            forecast=event_data.get('forecast', '') if isinstance(event_data, dict) else '',
-                            previous=event_data.get('previous', '') if isinstance(event_data, dict) else ''
-                        )
-                        events.append(event)
-                    except Exception as e:
-                        logger.error(f"Error processing event data: {str(e)}")
-                        logger.error(f"Event data: {event_data}")
-                        continue
-            
-            # Sort events by time
-            events.sort(key=lambda x: x.time)
-            return events
+        # Sort events by time
+        events.sort(key=lambda x: x.time)
+        return events
             
     except Exception as e:
         logger.error(f"Error fetching calendar: {str(e)}")
