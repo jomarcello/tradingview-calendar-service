@@ -14,6 +14,7 @@ load_dotenv()
 TELEGRAM_SERVICE_URL = os.getenv("TELEGRAM_SERVICE_URL")
 AI_PROCESSOR_URL = os.getenv("AI_PROCESSOR_URL", "https://tradingview-signal-ai-service-production.up.railway.app")
 CHART_SERVICE_URL = os.getenv("CHART_SERVICE_URL", "https://tradingview-chart-service-production.up.railway.app")
+SIGNAL_PROCESSOR_URL = os.getenv("SIGNAL_PROCESSOR_URL", "https://tradingview-signal-processor-production.up.railway.app")
 
 # Initialize logging
 logging.basicConfig(
@@ -90,92 +91,64 @@ async def fetch_economic_calendar():
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error fetching calendar data: {str(e)}")
 
-def format_telegram_message(events: List[EconomicEvent]) -> str:
-    """Format economic events into a Telegram message."""
+def format_signal_data(events: List[EconomicEvent]) -> dict:
+    """Format events into a signal that matches the signal processor format."""
     if not events:
-        return "No economic events scheduled."
+        return None
         
-    message = "🎯 Economic Calendar Update 🎯\n\n"
+    # Get the highest impact event for the signal
+    high_impact_events = [e for e in events if e.impact == "high"]
+    main_event = high_impact_events[0] if high_impact_events else events[0]
     
-    for event in events:
-        # Convert impact to emoji
-        impact_emoji = {
-            'high': '🔴',
-            'medium': '🟡',
-            'low': '⚪'
-        }.get(event.impact, '⚪')
-        
-        message += f"Time: {event.time}\n"
-        message += f"Currency: {event.currency}\n"
-        message += f"Impact: {impact_emoji}\n"
-        message += f"Event: {event.event}\n"
-        
-        if event.actual or event.forecast or event.previous:
-            if event.forecast:
-                message += f"Forecast: {event.forecast}\n"
-            if event.previous:
-                message += f"Previous: {event.previous}\n"
-            if event.actual:
-                message += f"Actual: {event.actual}\n"
-            
-        message += "\n-------------------\n\n"
+    # Create signal in the format expected by signal processor
+    signal = {
+        "type": "economic_calendar",
+        "instrument": main_event.currency + "USD",  # Convert to forex pair
+        "timeframe": "1h",
+        "strategy": "Economic Calendar Alert",
+        "events": [
+            {
+                "time": e.time,
+                "currency": e.currency,
+                "impact": e.impact,
+                "event": e.event,
+                "forecast": e.forecast,
+                "previous": e.previous,
+                "actual": e.actual
+            } for e in events
+        ],
+        "risk_management": {
+            "position_size": "1-2% max",
+            "notes": [
+                "Consider event impact on open positions",
+                "Adjust position sizes during high impact events",
+                "Be aware of potential market volatility"
+            ]
+        }
+    }
     
-    message += "Risk Management:\n"
-    message += "• Consider event impact on open positions\n"
-    message += "• Adjust position sizes during high impact events\n"
-    message += "• Be aware of potential market volatility\n\n"
-    
-    message += "🤖 SigmaPips AI Analysis:\n"
-    message += "Major economic events can cause significant market movements. "
-    message += "Plan your trades accordingly and maintain proper risk management."
-    
-    return message
+    return signal
 
 @app.get("/calendar")
 async def get_calendar():
-    """Get formatted economic calendar data and send through the system."""
+    """Get economic calendar data and send through signal processor."""
     try:
         events = await fetch_economic_calendar()
-        message = format_telegram_message(events)
+        signal = format_signal_data(events)
         
-        # Create signal format matching the system
-        signal = {
-            "type": "economic_calendar",
-            "content": {
-                "message": message,
-                "parse_mode": "HTML",
-                "reply_markup": {
-                    "inline_keyboard": [
-                        [
-                            {
-                                "text": "📊 Technical Analysis",
-                                "callback_data": "technical_analysis"
-                            },
-                            {
-                                "text": "📰 Market Sentiment",
-                                "callback_data": "market_sentiment"
-                            }
-                        ],
-                        [
-                            {
-                                "text": "📅 Economic Calendar",
-                                "callback_data": "economic_calendar"
-                            }
-                        ]
-                    ]
-                }
-            }
-        }
-        
-        # Send to telegram service
-        if TELEGRAM_SERVICE_URL:
+        if signal:
+            # Send to signal processor
             async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{TELEGRAM_SERVICE_URL}/send_signal",
+                response = await client.post(
+                    f"{SIGNAL_PROCESSOR_URL}/process_signal",
                     json=signal
                 )
-        
-        return {"status": "success", "data": signal}
+                response.raise_for_status()
+                
+                logger.info(f"Signal sent to processor: {signal}")
+                return {"status": "success", "message": "Calendar signal sent to processor"}
+        else:
+            return {"status": "success", "message": "No events to process"}
         
     except Exception as e:
         logger.error(f"Error in get_calendar: {str(e)}")
