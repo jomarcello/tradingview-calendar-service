@@ -33,28 +33,27 @@ class EconomicEvent(BaseModel):
     previous: Optional[str] = None
 
 async def fetch_economic_calendar():
-    """Fetch economic calendar data from Investing.com."""
-    url = "https://api.investing.com/economic-calendar/data"
+    """Fetch economic calendar data from TradingView."""
+    url = "https://economic-calendar.tradingview.com/events"
     
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://www.investing.com",
-            "Referer": "https://www.investing.com/economic-calendar/"
+            "Origin": "https://www.tradingview.com",
+            "Referer": "https://www.tradingview.com/economic-calendar/"
         }
         
         # Get today's date
         today = datetime.now()
-        date_str = today.strftime("%Y-%m-%d")
+        tomorrow = today + timedelta(days=1)
         
         params = {
-            "date": date_str,
-            "timeZone": "Europe/Amsterdam",
-            "timeFilter": "timeOnly",
-            "importance": "1,2,3",
-            "countries": "all"
+            "from": today.strftime("%Y-%m-%d"),
+            "to": tomorrow.strftime("%Y-%m-%d"),
+            "countries": "all",
+            "importance": "all"
         }
         
         async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
@@ -63,23 +62,30 @@ async def fetch_economic_calendar():
             data = response.json()
             
             events = []
-            for event in data.get('data', []):
+            for event in data:
+                # Convert impact level
                 impact_level = {
-                    '1': 'low',
-                    '2': 'medium',
-                    '3': 'high'
-                }.get(str(event.get('importance', '1')), 'low')
+                    'high': 'high',
+                    'medium': 'medium',
+                    'low': 'low'
+                }.get(event.get('importance', 'low'), 'low')
+                
+                # Convert timestamp to time
+                event_time = datetime.fromtimestamp(event.get('date', 0))
+                time_str = event_time.strftime("%H:%M")
                 
                 events.append(EconomicEvent(
-                    time=event.get('time', ''),
-                    currency=event.get('currency', ''),
+                    time=time_str,
+                    currency=event.get('country', ''),
                     impact=impact_level,
-                    event=event.get('event', ''),
+                    event=event.get('title', ''),
                     actual=event.get('actual', ''),
                     forecast=event.get('forecast', ''),
                     previous=event.get('previous', '')
                 ))
             
+            # Sort events by time
+            events.sort(key=lambda x: x.time)
             return events
             
     except Exception as e:
