@@ -59,30 +59,46 @@ async def fetch_economic_calendar():
         async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            data = response.json()
+            
+            # Log the response for debugging
+            logger.info(f"TradingView response: {response.text}")
+            
+            try:
+                data = response.json()
+            except json.JSONDecodeError:
+                logger.error(f"Failed to decode JSON response: {response.text}")
+                raise HTTPException(status_code=500, detail="Invalid response from TradingView")
             
             events = []
-            for event in data:
-                # Convert impact level
-                impact_level = {
-                    'high': 'high',
-                    'medium': 'medium',
-                    'low': 'low'
-                }.get(event.get('importance', 'low'), 'low')
-                
-                # Convert timestamp to time
-                event_time = datetime.fromtimestamp(event.get('date', 0))
-                time_str = event_time.strftime("%H:%M")
-                
-                events.append(EconomicEvent(
-                    time=time_str,
-                    currency=event.get('country', ''),
-                    impact=impact_level,
-                    event=event.get('title', ''),
-                    actual=event.get('actual', ''),
-                    forecast=event.get('forecast', ''),
-                    previous=event.get('previous', '')
-                ))
+            if isinstance(data, list):
+                for event_data in data:
+                    try:
+                        # Convert impact level
+                        impact_level = 'low'
+                        if isinstance(event_data, dict):
+                            importance = event_data.get('importance', 'low')
+                            if importance in ['high', 'medium', 'low']:
+                                impact_level = importance
+                        
+                        # Convert timestamp to time
+                        event_time = datetime.fromtimestamp(event_data.get('date', 0) if isinstance(event_data, dict) else 0)
+                        time_str = event_time.strftime("%H:%M")
+                        
+                        # Create event object with safe defaults
+                        event = EconomicEvent(
+                            time=time_str,
+                            currency=event_data.get('country', '') if isinstance(event_data, dict) else '',
+                            impact=impact_level,
+                            event=event_data.get('title', '') if isinstance(event_data, dict) else str(event_data),
+                            actual=event_data.get('actual', '') if isinstance(event_data, dict) else '',
+                            forecast=event_data.get('forecast', '') if isinstance(event_data, dict) else '',
+                            previous=event_data.get('previous', '') if isinstance(event_data, dict) else ''
+                        )
+                        events.append(event)
+                    except Exception as e:
+                        logger.error(f"Error processing event data: {str(e)}")
+                        logger.error(f"Event data: {event_data}")
+                        continue
             
             # Sort events by time
             events.sort(key=lambda x: x.time)
