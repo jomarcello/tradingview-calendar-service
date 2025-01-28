@@ -8,6 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 import asyncio
 from dotenv import load_dotenv
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +38,25 @@ async def scrape_forex_factory():
     url = "https://www.forexfactory.com/calendar"
     
     try:
-        async with httpx.AsyncClient() as client:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1"
+        }
+        
+        async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
+            # First get the cookies
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            # Now get the calendar with cookies
             response = await client.get(url)
             response.raise_for_status()
             
@@ -63,10 +82,19 @@ async def scrape_forex_factory():
             event_cell = row.find('td', class_='calendar__event')
             
             if all([time_cell, currency_cell, impact_cell, event_cell]):
+                # Get impact level
+                impact = 'low'
+                if impact_cell.find('span'):
+                    impact_class = impact_cell.find('span')['class'][0]
+                    if 'high' in impact_class:
+                        impact = 'high'
+                    elif 'medium' in impact_class:
+                        impact = 'medium'
+                
                 event = EconomicEvent(
                     time=time_cell.text.strip(),
                     currency=currency_cell.text.strip(),
-                    impact=impact_cell.find('span')['class'][0] if impact_cell.find('span') else 'low',
+                    impact=impact,
                     event=event_cell.text.strip()
                 )
                 events.append(event)
@@ -75,6 +103,7 @@ async def scrape_forex_factory():
         
     except Exception as e:
         logger.error(f"Error scraping ForexFactory: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error scraping calendar data: {str(e)}")
 
 def format_telegram_message(events: List[EconomicEvent]) -> str:
